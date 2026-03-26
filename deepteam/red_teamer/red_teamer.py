@@ -510,6 +510,40 @@ class RedTeamer:
             if simulated_test_case.error is not None:
                 return red_teaming_test_case
 
+            # Replay user turns through model_callback to get fresh
+            # assistant responses (fixes reuse_simulated_test_cases
+            # skipping the callback for multi-turn attacks).
+            try:
+                replayed_turns: List[RTTurn] = []
+                for turn in simulated_test_case.turns:
+                    if turn.role == "user":
+                        replayed_turns.append(turn)
+                        sig = inspect.signature(model_callback)
+                        if "turns" in sig.parameters:
+                            model_response: RTTurn = model_callback(
+                                turn.content, replayed_turns
+                            )
+                        else:
+                            model_response: RTTurn = model_callback(
+                                turn.content
+                            )
+                        replayed_turns.append(
+                            RTTurn(
+                                role="assistant",
+                                content=model_response.content,
+                            )
+                        )
+                    # Skip old assistant turns; they are replaced above.
+                red_teaming_test_case.turns = replayed_turns
+            except Exception:
+                if ignore_errors:
+                    red_teaming_test_case.error = (
+                        "Error generating output from target LLM"
+                    )
+                    return red_teaming_test_case
+                else:
+                    raise
+
             try:
                 metric.measure(red_teaming_test_case)
                 red_teaming_test_case.score = metric.score
@@ -590,6 +624,40 @@ class RedTeamer:
 
             if red_teaming_test_case.error is not None:
                 return red_teaming_test_case
+
+            # Replay user turns through model_callback to get fresh
+            # assistant responses (fixes reuse_simulated_test_cases
+            # skipping the callback for multi-turn attacks).
+            try:
+                replayed_turns: List[RTTurn] = []
+                for turn in simulated_test_case.turns:
+                    if turn.role == "user":
+                        replayed_turns.append(turn)
+                        sig = inspect.signature(model_callback)
+                        if "turns" in sig.parameters:
+                            model_response: RTTurn = await model_callback(
+                                turn.content, replayed_turns
+                            )
+                        else:
+                            model_response: RTTurn = await model_callback(
+                                turn.content
+                            )
+                        replayed_turns.append(
+                            RTTurn(
+                                role="assistant",
+                                content=model_response.content,
+                            )
+                        )
+                    # Skip old assistant turns; they are replaced above.
+                red_teaming_test_case.turns = replayed_turns
+            except Exception:
+                if ignore_errors:
+                    red_teaming_test_case.error = (
+                        "Error generating output from target LLM"
+                    )
+                    return red_teaming_test_case
+                else:
+                    raise
 
             try:
                 await metric.a_measure(red_teaming_test_case)
